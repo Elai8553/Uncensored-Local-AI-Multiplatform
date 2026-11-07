@@ -107,4 +107,19 @@ class ChatStorageService extends GetxService {
       _settingsBox.get('backend_type', defaultValue: 'cpu') as String;
 
   set backendType(String value) => _settingsBox.put('backend_type', value);
+
+  String get chatBackend =>
+      _settingsBox.get('chat_backend', defaultValue: 'local') as String;
+
+  set chatBackend(String value) => _settingsBox.put('chat_backend', value);
+
+  String get remoteBaseUrl =>
+      _settingsBox.get('remote_base_url', defaultValue: '') as String;
+
+  set remoteBaseUrl(String value) => _settingsBox.put('remote_base_url', value);
+
+  String get remoteModelId =>
+      _settingsBox.get('remote_model_id', defaultValue: '') as String;
+
+  set remoteModelId(String value) => _settingsBox.put('remote_model_id', value);
 }

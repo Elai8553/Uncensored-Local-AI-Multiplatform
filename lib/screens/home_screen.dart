@@ -493,20 +493,40 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: Center(
               child: Obx(() {
+                _chatCtrl.remoteSettingsRevision.value;
+                final remote = _chatCtrl.isRemoteBackend;
+                final remoteReady = _chatCtrl.remoteBaseUrl.trim().isNotEmpty &&
+                    _chatCtrl.remoteModelId.trim().isNotEmpty;
                 final fname = _modelCtrl.selectedModelFilename.value;
                 final info = fname != null
                     ? _modelCtrl.getModelInfo(fname)
                     : null;
                 final loaded = _llm.isLoaded.value;
                 final isLoading = _llm.isLoadingModel.value;
-                final label = isLoading
+                final label = remote
+                    ? remoteReady
+                        ? 'Remote · ${_chatCtrl.remoteModelId}'
+                        : 'Remote not configured'
+                    : isLoading
                     ? 'Loading...'
                     : loaded
                     ? (info?.name ?? fname ?? 'Model')
                     : 'No model selected';
+                final ready = remote ? remoteReady : loaded;
+                final statusColor = remote
+                    ? remoteReady
+                        ? AppColors.green
+                        : AppColors.orange
+                    : isLoading
+                    ? AppColors.orange
+                    : loaded
+                    ? AppColors.green
+                    : AppColors.red;
 
                 return GestureDetector(
-                  onTap: () => _showModelPicker(context),
+                  onTap: () => remote
+                      ? Get.toNamed('/settings')
+                      : _showModelPicker(context),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -517,11 +537,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         margin: const EdgeInsets.only(right: 6),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: isLoading
-                              ? AppColors.orange
-                              : loaded
-                              ? AppColors.green
-                              : AppColors.red,
+                          color: statusColor,
                         ),
                       ),
                       Flexible(
@@ -529,10 +545,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           label,
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: loaded
+                            fontWeight: ready
                                 ? FontWeight.w600
                                 : FontWeight.w500,
-                            color: loaded ? context.text : context.textD,
+                            color: ready ? context.text : context.textD,
                           ),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
@@ -806,10 +822,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Model selector dropdown
           Obx(() {
+            _chatCtrl.remoteSettingsRevision.value;
+            final remote = _chatCtrl.isRemoteBackend;
+            final remoteReady = _chatCtrl.remoteBaseUrl.trim().isNotEmpty &&
+                _chatCtrl.remoteModelId.trim().isNotEmpty;
             final fname = _modelCtrl.selectedModelFilename.value;
             final info = fname != null ? _modelCtrl.getModelInfo(fname) : null;
             return InkWell(
-              onTap: () => Get.toNamed('/models'),
+              onTap: () => Get.toNamed(remote ? '/settings' : '/models'),
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -824,7 +844,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      info?.name ?? (fname ?? 'Select Model'),
+                      remote
+                          ? remoteReady
+                              ? 'Remote · ${_chatCtrl.remoteModelId}'
+                              : 'Remote setup required'
+                          : info?.name ?? (fname ?? 'Select Model'),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -847,31 +871,46 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Engine status
           Obx(
-            () => Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _llm.isLoadingModel.value
-                        ? AppColors.orange
-                        : _llm.isLoaded.value
-                        ? AppColors.green
-                        : AppColors.red,
+            () {
+              _chatCtrl.remoteSettingsRevision.value;
+              final remote = _chatCtrl.isRemoteBackend;
+              final remoteReady = _chatCtrl.remoteBaseUrl.trim().isNotEmpty &&
+                  _chatCtrl.remoteModelId.trim().isNotEmpty;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: remote
+                          ? remoteReady
+                              ? AppColors.green
+                              : AppColors.orange
+                          : _llm.isLoadingModel.value
+                          ? AppColors.orange
+                          : _llm.isLoaded.value
+                          ? AppColors.green
+                          : AppColors.red,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  _llm.isLoadingModel.value
-                      ? 'Loading... ${(_llm.loadingProgress.value * 100).toInt()}%'
-                      : _llm.isLoaded.value
-                      ? 'Ready'
-                      : 'No Model',
-                  style: TextStyle(fontSize: 12, color: context.textD),
-                ),
-                if (_llm.isLoaded.value && !_llm.isLoadingModel.value) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    remote
+                        ? remoteReady
+                            ? 'Remote ready'
+                            : 'Remote setup required'
+                        : _llm.isLoadingModel.value
+                        ? 'Loading... ${(_llm.loadingProgress.value * 100).toInt()}%'
+                        : _llm.isLoaded.value
+                        ? 'Ready'
+                        : 'No Model',
+                    style: TextStyle(fontSize: 12, color: context.textD),
+                  ),
+                  if (!remote &&
+                      _llm.isLoaded.value &&
+                      !_llm.isLoadingModel.value) ...[
                   const SizedBox(width: 8),
                   // Unload button on desktop
                   InkWell(
@@ -911,7 +950,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ],
-            ),
+            );
+          },
           ),
 
           const SizedBox(width: 8),

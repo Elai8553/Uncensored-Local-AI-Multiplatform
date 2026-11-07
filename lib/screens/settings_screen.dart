@@ -10,6 +10,8 @@ import '../services/local_api_server_service.dart';
 import '../services/model_manager.dart';
 import '../services/background_optimizer_service.dart';
 import '../services/chat_storage_service.dart';
+import '../services/remote_model_service.dart';
+import '../widgets/remote_backend_settings_card.dart';
 
 class SettingsScreen extends StatelessWidget {
   /// When true, no Scaffold — just the body content for embedding in tabs.
@@ -41,6 +43,7 @@ class _SettingsBody extends StatelessWidget {
     final themeCtrl = Get.find<ThemeController>();
     final apiServer = Get.find<LocalApiServerService>();
     final storage = Get.find<ChatStorageService>();
+    final remoteService = Get.find<RemoteModelService>();
 
     return Column(
       children: [
@@ -85,6 +88,64 @@ class _SettingsBody extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              _sectionHeader(context, 'Inference Backend'),
+              const SizedBox(height: 12),
+              _card(
+                context,
+                child: Obx(
+                  () => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(
+                            value: 'local',
+                            label: Text('Local'),
+                            icon: Icon(Icons.phone_android_rounded),
+                          ),
+                          ButtonSegment(
+                            value: 'remote',
+                            label: Text('Remote'),
+                            icon: Icon(Icons.cloud_outlined),
+                          ),
+                        ],
+                        selected: {chatCtrl.chatBackend.value},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (selection) =>
+                            chatCtrl.setChatBackend(selection.first),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        chatCtrl.isRemoteBackend
+                            ? 'Send this conversation and its system prompt to your configured OpenAI-compatible server.'
+                            : 'Use the existing on-device GGUF model with llama.cpp.',
+                        style: TextStyle(
+                          color: context.textD,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Obx(
+                () => chatCtrl.isRemoteBackend
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: _card(
+                          context,
+                          child: RemoteBackendSettingsCard(
+                            chatController: chatCtrl,
+                            storage: storage,
+                            remoteService: remoteService,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              const SizedBox(height: 24),
+
               // ── Appearance ────────────────────────────────
               _sectionHeader(context, 'Appearance'),
               const SizedBox(height: 12),

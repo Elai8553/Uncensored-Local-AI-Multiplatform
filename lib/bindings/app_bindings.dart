@@ -4,6 +4,7 @@ import '../services/llm_service.dart';
 import '../services/model_manager.dart';
 import '../services/chat_storage_service.dart';
 import '../services/local_api_server_service.dart';
+import '../services/remote_model_service.dart';
 import '../services/wakelock_service.dart';
 import '../services/log_service.dart';
 import '../controllers/chat_controller.dart';
@@ -19,6 +20,7 @@ class AppBindings extends Bindings {
     Get.lazyPut(() => ModelManager(), fenix: true);
     Get.lazyPut(() => ChatStorageService(), fenix: true);
     Get.lazyPut(() => LocalApiServerService(), fenix: true);
+    Get.lazyPut(() => RemoteModelService(), fenix: true);
     Get.lazyPut(() => WakelockService(), fenix: true);
     Get.lazyPut(() => LogService(), fenix: true);
 

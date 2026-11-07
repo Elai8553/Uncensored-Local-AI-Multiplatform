@@ -1,14 +1,17 @@
 import 'dart:async';
+
 import 'package:get/get.dart';
 
 import '../models/chat_model.dart';
 import '../models/message_model.dart';
 import '../services/llm_service.dart';
 import '../services/chat_storage_service.dart';
+import '../services/remote_model_service.dart';
 
 class ChatController extends GetxController {
   final LlmService _llm = Get.find<LlmService>();
   final ChatStorageService _storage = Get.find<ChatStorageService>();
+  final RemoteModelService _remote = Get.find<RemoteModelService>();
 
   final chats = <ChatModel>[].obs;
   final activeChatId = RxnString();
@@ -16,13 +19,27 @@ class ChatController extends GetxController {
   final streamedResponse = ''.obs;
   final temperature = 0.7.obs;
   final systemPrompt = ''.obs;
+  final chatBackend = 'local'.obs;
+  final remoteSettingsRevision = 0.obs;
 
-  StreamSubscription<String>? _genSub;
+  bool _cancelRequested = false;
+
+  bool get isRemoteBackend => chatBackend.value == 'remote';
+  String get remoteBaseUrl => _storage.remoteBaseUrl;
+  String get remoteModelId => _storage.remoteModelId;
+
+  void setChatBackend(String value) {
+    chatBackend.value = value == 'remote' ? 'remote' : 'local';
+    _storage.chatBackend = chatBackend.value;
+  }
+
+  void remoteSettingsUpdated() => remoteSettingsRevision.value++;
 
   @override
   void onInit() {
     super.onInit();
     _loadChats();
+    chatBackend.value = _storage.chatBackend;
     temperature.value = _storage.defaultTemperature;
     systemPrompt.value = _storage.globalSystemPrompt;
   }
@@ -71,7 +88,7 @@ class ChatController extends GetxController {
 
   /// Send a user message and stream AI response.
   Future<void> sendMessage(String text, {String? modelFilename}) async {
-    if (text.trim().isEmpty) return;
+    if (isGenerating.value || text.trim().isEmpty) return;
     final chat = activeChat;
     if (chat == null) return;
 
@@ -81,9 +98,13 @@ class ChatController extends GetxController {
     chat.autoTitle();
     chat.updatedAt = DateTime.now();
 
-    // Lock model to this chat on first message
-    if (chat.modelId.isEmpty && modelFilename != null) {
-      chat.modelId = modelFilename;
+    // Record the selected inference backend on the first turn.
+    if (chat.modelId.isEmpty) {
+      if (isRemoteBackend && remoteModelId.trim().isNotEmpty) {
+        chat.modelId = 'remote:${remoteModelId.trim()}';
+      } else if (modelFilename != null) {
+        chat.modelId = modelFilename;
+      }
     }
 
     _storage.saveChat(chat);
@@ -95,7 +116,8 @@ class ChatController extends GetxController {
         .map((m) => m.toLlamaMessage())
         .toList();
 
-    // Start generation
+    // Start generation through the selected backend without changing local history.
+    _cancelRequested = false;
     isGenerating.value = true;
     streamedResponse.value = '';
 
@@ -104,13 +126,22 @@ class ChatController extends GetxController {
     chats.refresh();
 
     try {
-      final stream = _llm.generate(
-        messages: history,
-        systemPrompt: chat.systemPrompt.isNotEmpty
-            ? chat.systemPrompt
-            : systemPrompt.value,
-        temperature: temperature.value,
-      );
+      final prompt = chat.systemPrompt.isNotEmpty
+          ? chat.systemPrompt
+          : systemPrompt.value;
+      final stream = isRemoteBackend
+          ? _remote.generate(
+              baseUrl: remoteBaseUrl,
+              modelId: remoteModelId,
+              messages: history,
+              systemPrompt: prompt,
+              temperature: temperature.value,
+            )
+          : _llm.generate(
+              messages: history,
+              systemPrompt: prompt,
+              temperature: temperature.value,
+            );
 
       await for (final token in stream) {
         streamedResponse.value += token;
@@ -119,8 +150,10 @@ class ChatController extends GetxController {
         chats.refresh();
       }
     } catch (e) {
-      if (aiMsg.content.isEmpty) {
-        aiMsg.content = '⚠ Error: ${e.toString()}';
+      if (!_cancelRequested) {
+        aiMsg.content = aiMsg.content.isEmpty
+            ? 'Error: $e'
+            : '${aiMsg.content}\n\nGeneration interrupted: $e';
       }
     } finally {
       // Clean up any trailing stop tokens or whitespace
@@ -132,6 +165,7 @@ class ChatController extends GetxController {
           ), '')
           .trim();
       isGenerating.value = false;
+      _cancelRequested = false;
       streamedResponse.value = '';
       chat.updatedAt = DateTime.now();
       _storage.saveChat(chat);
@@ -139,10 +173,15 @@ class ChatController extends GetxController {
     }
   }
 
-  /// Stop current generation.
-  void stopGeneration() {
-    _llm.stopGeneration();
-    isGenerating.value = false;
+  /// Stop the active remote request or local inference without discarding history.
+  Future<void> stopGeneration() async {
+    if (!isGenerating.value) return;
+    _cancelRequested = true;
+    if (isRemoteBackend) {
+      _remote.cancelGeneration();
+    } else {
+      await _llm.stopGeneration();
+    }
   }
 
   /// Update the system prompt for the active chat.
@@ -174,7 +213,14 @@ class ChatController extends GetxController {
 
   @override
   void onClose() {
-    _genSub?.cancel();
+    if (isGenerating.value) {
+      _cancelRequested = true;
+      if (isRemoteBackend) {
+        _remote.cancelGeneration();
+      } else {
+        unawaited(_llm.stopGeneration());
+      }
+    }
     super.onClose();
   }
 }

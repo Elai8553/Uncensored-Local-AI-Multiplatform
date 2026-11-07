@@ -19,6 +19,7 @@ dependencies:
   # ── Local Storage ───────────────────────────────────────────────
   hive_flutter: ^1.1.0             # Hive with Flutter init helpers
   hive: ^2.2.3                     # Hive core key-value + box storage
+  flutter_secure_storage: ^11.2.0  # Platform secure storage for remote API keys
 
   # ── Networking / Downloads ──────────────────────────────────────
   http: ^1.2.2                     # HTTP requests + model downloading
