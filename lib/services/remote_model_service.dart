@@ -163,7 +163,7 @@ class RemoteModelService extends GetxService {
     final rawError = decoded is Map<String, dynamic> ? decoded['error'] : null;
     var message = rawError == null
         ? 'Remote server returned HTTP $statusCode.'
-        : _remoteErrorText(rawError);
+        : 'Remote server returned HTTP $statusCode: ${_remoteErrorText(rawError)}';
     message = _redactSecret(message, secret);
     if (message.length > 400) message = '${message.substring(0, 397)}...';
     return RemoteModelException(message, statusCode: statusCode);
@@ -200,6 +200,80 @@ class RemoteModelService extends GetxService {
         .map((item) => item['id'])
         .whereType<String>()
         .toList(growable: false);
+  }
+
+  Future<void> testConnection({
+    required String baseUrl,
+    required String modelId,
+    String? apiKey,
+  }) async {
+    final normalizedModelId = modelId.trim();
+    if (normalizedModelId.isEmpty) {
+      throw const FormatException('Enter a remote model ID in Settings.');
+    }
+
+    final endpoint = endpointFor(baseUrl, 'chat/completions');
+    final secret = apiKey ?? await _credentialStore.read();
+    final abort = Completer<void>();
+    final request = http.AbortableRequest(
+      'POST',
+      endpoint,
+      abortTrigger: abort.future,
+    );
+    request.headers.addAll({
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    });
+    if (secret != null && secret.trim().isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer ${secret.trim()}';
+    }
+    request.body = jsonEncode({
+      'model': normalizedModelId,
+      'messages': [
+        {'role': 'user', 'content': 'Connection test. Reply with OK.'},
+      ],
+      'max_tokens': 1,
+      'stream': false,
+    });
+
+    try {
+      final streamedResponse = await _client
+          .send(request)
+          .timeout(const Duration(seconds: 20));
+      final response = await http.Response.fromStream(streamedResponse)
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw responseError(response.statusCode, response.body, secret: secret);
+      }
+
+      final decoded = _decodeJson(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw RemoteModelException(
+          'The server responded, but returned an invalid chat completion.',
+          statusCode: response.statusCode,
+        );
+      }
+      if (decoded['error'] != null) {
+        throw RemoteModelException(
+          'Remote server returned HTTP ${response.statusCode}: '
+          '${_redactSecret(_remoteErrorText(decoded['error']), secret)}',
+          statusCode: response.statusCode,
+        );
+      }
+      final choices = decoded['choices'];
+      if (choices is! List || choices.isEmpty) {
+        throw RemoteModelException(
+          'The server responded, but did not return an OpenAI-compatible chat completion.',
+          statusCode: response.statusCode,
+        );
+      }
+    } on TimeoutException {
+      throw const RemoteModelException(
+        'Remote connection test timed out after 20 seconds.',
+      );
+    } finally {
+      if (!abort.isCompleted) abort.complete();
+    }
   }
 
   Stream<String> generate({

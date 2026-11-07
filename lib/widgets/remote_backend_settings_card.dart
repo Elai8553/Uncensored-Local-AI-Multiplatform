@@ -31,6 +31,7 @@ class _RemoteBackendSettingsCardState extends State<RemoteBackendSettingsCard> {
   bool _hasApiKey = false;
   bool _isSaving = false;
   bool _isLoadingModels = false;
+  bool _isTestingConnection = false;
   String? _statusMessage;
   bool _statusIsError = false;
 
@@ -141,6 +142,37 @@ class _RemoteBackendSettingsCardState extends State<RemoteBackendSettingsCard> {
     }
   }
 
+  Future<void> _testConnection() async {
+    setState(() {
+      _isTestingConnection = true;
+      _statusMessage = null;
+    });
+    try {
+      final enteredKey = _apiKeyController.text.trim();
+      await widget.remoteService.testConnection(
+        baseUrl: _baseUrlController.text,
+        modelId: _modelIdController.text,
+        apiKey: enteredKey.isEmpty ? null : enteredKey,
+      );
+      if (mounted) {
+        setState(() {
+          _statusIsError = false;
+          _statusMessage =
+              'Connection successful. The one-token test did not change chat history or the app system prompt.';
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _statusIsError = true;
+          _statusMessage = error.toString().replaceFirst('FormatException: ', '');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isTestingConnection = false);
+    }
+  }
+
   Future<void> _clearApiKey() async {
     try {
       await widget.remoteService.clearApiKey();
@@ -234,12 +266,21 @@ class _RemoteBackendSettingsCardState extends State<RemoteBackendSettingsCard> {
           ),
         ),
         const SizedBox(height: 12),
+        Text(
+          'Test connection sends a separate one-token prompt to the selected model. It does not change chat history or the app system prompt.',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontSize: 12,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
             FilledButton.icon(
-              onPressed: _isSaving ? null : _saveSettings,
+              onPressed: _isSaving || _isTestingConnection ? null : _saveSettings,
               icon: _isSaving
                   ? const SizedBox(
                       width: 16,
@@ -250,7 +291,9 @@ class _RemoteBackendSettingsCardState extends State<RemoteBackendSettingsCard> {
               label: const Text('Save remote settings'),
             ),
             OutlinedButton.icon(
-              onPressed: _isLoadingModels ? null : _loadModels,
+              onPressed: _isLoadingModels || _isTestingConnection || _isSaving
+                  ? null
+                  : _loadModels,
               icon: _isLoadingModels
                   ? const SizedBox(
                       width: 16,
@@ -259,6 +302,19 @@ class _RemoteBackendSettingsCardState extends State<RemoteBackendSettingsCard> {
                     )
                   : const Icon(Icons.refresh_rounded, size: 17),
               label: const Text('Load /v1/models'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _isTestingConnection || _isSaving || _isLoadingModels
+                  ? null
+                  : _testConnection,
+              icon: _isTestingConnection
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.wifi_tethering_rounded, size: 17),
+              label: const Text('Test connection'),
             ),
           ],
         ),

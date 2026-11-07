@@ -156,6 +156,44 @@ void main() {
     expect(jsonDecode(request.body)['model'], 'my-vps-model');
   });
 
+  test('tests the configured model without changing chat history or prompt', () async {
+    const secret = 'test-secret';
+    final credentials = _MemoryCredentialStore()..value = secret;
+    http.BaseRequest? capturedRequest;
+    final service = RemoteModelService(
+      client: _FakeClient((request) async {
+        capturedRequest = request;
+        return _streamedResponse(
+          jsonEncode({
+            'choices': [
+              {'message': {'role': 'assistant', 'content': 'O'}},
+            ],
+          }),
+        );
+      }),
+      credentialStore: credentials,
+    );
+
+    await service.testConnection(
+      baseUrl: 'https://models.example.test',
+      modelId: 'my-vps-model',
+    );
+
+    final request = capturedRequest! as http.Request;
+    final body = jsonDecode(request.body) as Map<String, dynamic>;
+    expect(request.method, 'POST');
+    expect(request.url.path, '/v1/chat/completions');
+    expect(request.headers['Authorization'], 'Bearer $secret');
+    expect(body['model'], 'my-vps-model');
+    expect(body['max_tokens'], 1);
+    expect(body['stream'], isFalse);
+    expect(body['messages'], [
+      {'role': 'user', 'content': 'Connection test. Reply with OK.'},
+    ]);
+    expect(request.body, isNot(contains(secret)));
+    expect(credentials.value, secret);
+  });
+
   test('surfaces remote HTTP errors without exposing the saved key', () async {
     const secret = 'test-secret';
     final service = RemoteModelService(
@@ -179,6 +217,7 @@ void main() {
       throwsA(
         isA<RemoteModelException>()
             .having((error) => error.statusCode, 'statusCode', 401)
+            .having((error) => error.message, 'message', contains('HTTP 401'))
             .having((error) => error.message, 'message', contains('[redacted]'))
             .having((error) => error.message, 'message', isNot(contains(secret))),
       ),

@@ -508,10 +508,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ? 'Remote · ${_chatCtrl.remoteModelId}'
                         : 'Remote not configured'
                     : isLoading
-                    ? 'Loading...'
+                    ? 'Local · Loading...'
                     : loaded
-                    ? (info?.name ?? fname ?? 'Model')
-                    : 'No model selected';
+                    ? 'Local · ${info?.name ?? fname ?? 'Model'}'
+                    : 'Local · No model selected';
                 final ready = remote ? remoteReady : loaded;
                 final statusColor = remote
                     ? remoteReady
@@ -848,7 +848,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ? remoteReady
                               ? 'Remote · ${_chatCtrl.remoteModelId}'
                               : 'Remote setup required'
-                          : info?.name ?? (fname ?? 'Select Model'),
+                          : 'Local · ${info?.name ?? (fname ?? 'Select Model')}',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -904,8 +904,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         : _llm.isLoadingModel.value
                         ? 'Loading... ${(_llm.loadingProgress.value * 100).toInt()}%'
                         : _llm.isLoaded.value
-                        ? 'Ready'
-                        : 'No Model',
+                        ? 'Local ready'
+                        : 'Local model missing',
                     style: TextStyle(fontSize: 12, color: context.textD),
                   ),
                   if (!remote &&
